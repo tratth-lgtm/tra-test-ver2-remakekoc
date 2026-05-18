@@ -4,7 +4,7 @@ import os
 import random
 import tempfile
 import urllib.request
-import numpy as np
+import numpy as np  # <-- DÒNG NÀY ĐÃ ĐƯỢC THÊM ĐỂ FIX LỖI 'np'
 from PIL import Image, ImageDraw, ImageFont
 
 # ==========================================
@@ -89,7 +89,6 @@ def make_text_frame(gf, t, text_list, video_w, video_h):
     
     font_size = max(20, int(video_w * 0.045)) # Tính toán kích thước chữ theo khung hình
     
-    # SỬA LỖI CHÍ MẠNG TẠI ĐÂY: Kiểm tra font sinh ra an toàn
     font = None
     if os.path.exists(FONT_PATH) and os.path.getsize(FONT_PATH) > 0:
         try:
