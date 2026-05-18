@@ -79,7 +79,6 @@ def smart_wrap_text(draw, text, font_path, initial_font_size, max_width):
     current_size = initial_font_size
     font = ImageFont.truetype(font_path, current_size) if os.path.exists(font_path) else ImageFont.load_default()
     
-    # Bước 1: Nếu chuỗi quá dài, chủ động hạ size chữ xuống trước (Thu nhỏ khi text dài)
     if len(text) > 30 and initial_font_size > 32:
         current_size = int(initial_font_size * 0.82)
         font = ImageFont.truetype(font_path, current_size)
@@ -87,53 +86,50 @@ def smart_wrap_text(draw, text, font_path, initial_font_size, max_width):
         current_size = int(initial_font_size * 0.70)
         font = ImageFont.truetype(font_path, current_size)
 
-    # Bước 2: Tách dòng dựa trên dấu gạch đứng hoặc tự động ngắt câu
-    if '|' in text:
-        raw_lines = [line.strip() for line in text.split('|')]
-    else:
-        # Ước lượng số ký tự tối đa dựa trên độ rộng chữ 'x' thực tế
+    if '|' not in text:
         try:
-            char_w = draw.textsize('x', font=font)[0]
+            # Đo kích thước ký tự linh hoạt hỗ trợ Pillow mới
+            if hasattr(draw, 'textbbox'):
+                char_w = draw.textbbox((0, 0), 'x', font=font)[2]
+            else:
+                char_w = draw.textsize('x', font=font)[0]
         except:
             char_w = current_size * 0.5
             
         chars_per_line = max(10, int(max_width / char_w))
         raw_lines = textwrap.wrap(text, width=chars_per_line)
+    else:
+        raw_lines = [line.strip() for line in text.split('|')]
 
-    # Bước 3: Thuật toán khống chế dòng cuối cùng phải có ít nhất 2 từ
-    final_lines = []
-    for line in raw_lines:
-        final_lines.append(line)
+    final_lines = [l for l in raw_lines if l.strip()]
         
     if len(final_lines) > 1 and '|' not in text:
         last_line_words = final_lines[-1].split()
-        # Nếu dòng cuối chỉ có 1 từ đơn độc (mồ côi)
         if len(last_line_words) == 1 and len(final_lines[-2].split()) > 1:
             prev_line_words = final_lines[-2].split()
-            # Bốc 1 từ cuối của dòng sát trên đưa xuống dòng cuối
             moved_word = prev_line_words.pop()
-            
             final_lines[-2] = " ".join(prev_line_words)
             final_lines[-1] = moved_word + " " + final_lines[-1]
 
-    # Loại bỏ các dòng rỗng lỗi
     final_lines = [l for l in final_lines if l.strip()]
 
-    # Tính toán kích thước tổng thể khối chữ sau khi bẻ dòng
     max_w = 0
     total_h = 0
     line_dims = []
     
     for line in final_lines:
         try:
-            w, h = draw.textsize(line, font=font)
+            if hasattr(draw, 'textbbox'):
+                bbox = draw.textbbox((0, 0), line, font=font)
+                w, h = bbox[2] - bbox[0], bbox[3] - bbox[1]
+            else:
+                w, h = draw.textsize(line, font=font)
         except:
-            w, h = draw.textbbox((0, 0), line, font=font)[2], current_size
+            w, h = current_size * len(line) * 0.6, current_size
         max_w = max(max_w, w)
         total_h += h
         line_dims.append((w, h))
         
-    # Thêm khoảng cách giãn dòng nhẹ 15%
     total_h += int(current_size * 0.15) * (len(final_lines) - 1)
 
     return max_w, total_h, list(zip(final_lines, line_dims)), font, current_size
@@ -157,9 +153,8 @@ def process_text_frame(get_frame, t):
     img = Image.fromarray(frame)
     draw = ImageDraw.Draw(img)
     
-    # Thiết lập cỡ chữ gốc tiêu chuẩn dựa theo độ rộng video
     initial_font_size = max(28, int(video_w * 0.055))
-    max_text_width = int(video_w * 0.85) # Giới hạn không vượt quá 85% màn hình
+    max_text_width = int(video_w * 0.85) 
     base_y = int(video_h * 0.70) 
     
     text = active_text["content"]
@@ -167,9 +162,6 @@ def process_text_frame(get_frame, t):
     pad_h = 25  
     pad_v = 15  
 
-    # ------------------------------------------
-    # VẼ STYLE 1 HOẶC STYLE 2 (HỖ TRỢ ĐA DÒNG AN TOÀN)
-    # ------------------------------------------
     if style in ["style_1", "style_2"]:
         max_w, total_h, wrapped_lines, font, current_size = smart_wrap_text(
             draw, text, FONT_PATH, initial_font_size, max_text_width
@@ -194,9 +186,6 @@ def process_text_frame(get_frame, t):
             draw.text((line_x, current_y), line_text, fill=txt_color, font=font)
             current_y += line_h + int(current_size * 0.15)
         
-    # ------------------------------------------
-    # VẼ STYLE 3 (HỘP CHỮ KHỐI KÉP ĐẢO MÀU)
-    # ------------------------------------------
     elif style == "style_3":
         if '|' in text:
             parts = text.split('|', 1)
@@ -208,14 +197,11 @@ def process_text_frame(get_frame, t):
             line1_raw = " ".join(words[:mid]) if mid > 0 else text
             line2_raw = " ".join(words[mid:]) if mid > 0 else ""
             
-        # Tính toán xử lý cho khối dòng 1
         max_w1, total_h1, lines1, font1, size1 = smart_wrap_text(draw, line1_raw, FONT_PATH, initial_font_size, max_text_width)
-        # Tính toán xử lý cho khối dòng 2
         max_w2, total_h2, lines2, font2, size2 = smart_wrap_text(draw, line2_raw, FONT_PATH, initial_font_size, max_text_width)
         
         block_gap = int(initial_font_size * 0.5)
         
-        # Vẽ Block 1: Chữ Đỏ - Nền Trắng
         if lines1:
             rect1_x1 = int((video_w - (max_w1 + pad_h * 2)) // 2)
             rect1_y1 = int(base_y - total_h1 - block_gap)
@@ -229,7 +215,6 @@ def process_text_frame(get_frame, t):
                 draw.text((line_x, current_y), line_text, fill=(220, 20, 60), font=font1)
                 current_y += line_h + int(size1 * 0.15)
             
-        # Vẽ Block 2: Chữ Trắng - Nền Đỏ
         if lines2:
             rect2_x1 = int((video_w - (max_w2 + pad_h * 2)) // 2)
             rect2_y1 = int(base_y + block_gap)
@@ -246,7 +231,16 @@ def process_text_frame(get_frame, t):
     return np.array(img)
 
 # ==========================================
-# 3. LUỒNG XỬ LÝ AI & KÉO THẢ VIDEO FULL KHUNG
+# HÀM FIX LỖI ANTIALIAS: THU PHÓNG BẰNG PILLOW MỚI
+# ==========================================
+def resize_frame_safe(frame, target_w, target_h):
+    # Chuyển đổi khung hình sang dạng ảnh để dùng bộ lọc Resampling.LANCZOS chuẩn mới
+    img = Image.fromarray(frame)
+    img_resized = img.resize((target_w, target_h), Image.Resampling.LANCZOS)
+    return np.array(img_resized)
+
+# ==========================================
+# 3. LUỒNG XỬ LÝ CHÍNH & KÉO THẢ VIDEO FULL KHUNG
 # ==========================================
 def save_temp(file):
     with tempfile.NamedTemporaryFile(delete=False, suffix='.mp4') as tmp:
@@ -279,7 +273,7 @@ if st.button("🚀 BẮT ĐẦU TẠO VIDEO", use_container_width=True):
             
             loaded_b_clips = [mp.VideoFileClip(p).without_audio() for p in paths_b]
             
-            # GIỚI HẠN KÍCH THƯỚC ĐỨNG 9:16 CỐ ĐỊNH (FULL HD VERTICAL)
+            # KÍCH THƯỚC ĐỨNG 9:16 CỐ ĐỊNH (FULL HD VERTICAL)
             target_w = 1080
             target_h = 1920
             target_ratio = target_w / target_h
@@ -294,7 +288,7 @@ if st.button("🚀 BẮT ĐẦU TẠO VIDEO", use_container_width=True):
                     st_cut = random.uniform(0, max(0, c_b.duration - cut_d))
                     sub = c_b.subclip(st_cut, min(st_cut + cut_d, c_b.duration))
                     
-                    # THUẬT TOÁN TỰ ĐỘNG CẮT CÂN TÂM (CROP) & PHÓNG TO CHIẾM 100% KHUNG
+                    # THUẬT TOÁN TỰ ĐỘNG CẮT CÂN TÂM (CROP)
                     clip_ratio = sub.w / sub.h
                     if clip_ratio > target_ratio:
                         new_w = sub.h * target_ratio
@@ -303,7 +297,9 @@ if st.button("🚀 BẮT ĐẦU TẠO VIDEO", use_container_width=True):
                         new_h = sub.w / target_ratio
                         sub = sub.crop(x1=0, y1=(sub.h - new_h)/2, width=sub.w, height=new_h)
                     
-                    sub = sub.resize(newsize=(target_w, target_h))
+                    # SỬA LỖI TẠI ĐÂY: Dùng hàm fl_image kết hợp Pillow Resampling để không gọi ANTIALIAS
+                    sub = sub.fl_image(lambda frame: resize_frame_safe(frame, target_w, target_h))
+                    
                     b_clips.append(sub)
                     current_d += sub.duration
             
