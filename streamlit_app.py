@@ -4,7 +4,7 @@ import os
 import random
 import tempfile
 import urllib.request
-import numpy as np  # <-- DÒNG NÀY ĐÃ ĐƯỢC THÊM ĐỂ FIX LỖI 'np'
+import numpy as np
 from PIL import Image, ImageDraw, ImageFont
 
 # ==========================================
@@ -17,7 +17,6 @@ FONT_PATH = "Roboto-Bold.ttf"
 def load_vietnamese_font():
     if not os.path.exists(FONT_PATH):
         try:
-            # Thiết lập timeout để nếu mạng lỗi không bị treo web
             urllib.request.urlretrieve(FONT_URL, FONT_PATH, timeout=10)
         except:
             pass
@@ -87,7 +86,7 @@ def make_text_frame(gf, t, text_list, video_w, video_h):
     img = Image.fromarray(frame)
     draw = ImageDraw.Draw(img)
     
-    font_size = max(20, int(video_w * 0.045)) # Tính toán kích thước chữ theo khung hình
+    font_size = max(20, int(video_w * 0.045))
     
     font = None
     if os.path.exists(FONT_PATH) and os.path.getsize(FONT_PATH) > 0:
@@ -100,7 +99,6 @@ def make_text_frame(gf, t, text_list, video_w, video_h):
         
     text = active_text["content"]
     
-    # Đo kích thước chữ để tạo khung nền đổ bóng ôm sát chữ
     if hasattr(draw, 'textbbox'):
         bbox = draw.textbbox((0, 0), text, font=font)
         text_w = bbox[2] - bbox[0]
@@ -109,15 +107,11 @@ def make_text_frame(gf, t, text_list, video_w, video_h):
         text_w = draw.textlength(text, font=font)
         text_h = font_size
 
-    # Vị trí đặt chữ (Chính giữa bên dưới màn hình KOC)
     x = int((video_w - text_w) // 2)
     y = int(video_h * 0.8)
     
-    # Vẽ hộp nền màu
     pad = 12
     draw.rectangle([x - pad, y - pad, x + text_w + pad, y + text_h + pad], fill=active_text["style"]["bg_color"])
-    
-    # Đè chữ lên nền
     draw.text((x, y - 2), text, fill=active_text["style"]["text_color"], font=font)
     
     return np.array(img)
@@ -170,9 +164,9 @@ if st.button("🚀 BẮT ĐẦU TẠO VIDEO", use_container_width=True):
 
             status_text.text("✍️ Bước 4: Đang đồng bộ hóa chèn Text Tiếng Việt...")
             if texts_config:
+                # ĐÃ XOÁ 'keep_duration=True' ĐỂ FIX LỖI TƯƠNG THÍCH PHIÊN BẢN MOVIEPY
                 final_video = final_video.fl_image(
-                    lambda gf, t: make_text_frame(gf, t, texts_config, final_video.w, final_video.h), 
-                    keep_duration=True
+                    lambda gf, t: make_text_frame(gf, t, texts_config, final_video.w, final_video.h)
                 )
             progress_bar.progress(80)
 
