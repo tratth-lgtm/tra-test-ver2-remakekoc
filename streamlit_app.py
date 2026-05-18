@@ -69,12 +69,11 @@ for i, col in enumerate([t_col1, t_col2, t_col3]):
                 })
 
 # ==========================================
-# HÀM XỬ LÝ VẼ CHỮ SỬA LỖI LAMBDA CHO MOVIEPY 1.0.3
+# HÀM XỬ LÝ VẼ CHỮ AN TOÀN CHO MOVIEPY 1.0.3
 # ==========================================
 def process_text_frame(get_frame, t):
-    frame = get_frame(t) # Lấy khung hình tại giây thứ t
+    frame = get_frame(t)
     
-    # Tìm xem tại giây t này có text nào khớp cấu hình không
     active_text = None
     for txt in texts_config:
         if txt["start"] <= t <= txt["end"]:
@@ -166,8 +165,21 @@ if st.button("🚀 BẮT ĐẦU TẠO VIDEO", use_container_width=True):
 
             status_text.text("✍️ Bước 4: Đang đồng bộ hóa chèn Text Tiếng Việt...")
             if texts_config:
-                # SỬA ĐỔI CHÍ MẠNG: Dùng hàm .fl() chuẩn của MoviePy bản cũ để chèn chữ theo thời gian
                 final_video = final_video.fl(process_text_frame)
             progress_bar.progress(80)
 
-            status_text
+            status_text.text("⏳ Bước 5: Đang đóng gói xuất video (Có thể mất 1-2 phút)...")
+            out_p = tempfile.NamedTemporaryFile(delete=False, suffix='.mp4').name
+            final_video.write_videofile(out_p, codec="libx264", audio_codec="aac", fps=24, preset="ultrafast", logger=None)
+            
+            progress_bar.progress(100)
+            status_text.text("✅ Hoàn thành!")
+            
+            st.success("🎉 Video của bạn đã sẵn sàng!")
+            st.video(out_p)
+            
+            with open(out_p, "rb") as f:
+                st.download_button("⬇️ TẢI VIDEO XUỐNG", f, "koc_final.mp4", "video/mp4", use_container_width=True)
+
+        except Exception as e:
+            st.error(f"Lỗi hệ thống: {e}")
