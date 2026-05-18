@@ -1,7 +1,2 @@
-openai-whisper
-moviepy
-Pillow
-numpy
-imageio-ffmpeg
 streamlit
 moviepy==1.0.3
