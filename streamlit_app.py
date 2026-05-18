@@ -4,10 +4,11 @@ import os
 import random
 import tempfile
 import urllib.request
+import numpy as np
 from PIL import Image, ImageDraw, ImageFont
 
 # ==========================================
-# 1. TỰ ĐỘNG TẢI FONT CHỮ TIẾNG VIỆT
+# 1. TỰ ĐỘNG TẢI FONT CHỮ TIẾNG VIỆT DỰ PHÒNG
 # ==========================================
 FONT_URL = "https://github.com/googlefonts/roboto/raw/main/src/hinted/Roboto-Bold.ttf"
 FONT_PATH = "Roboto-Bold.ttf"
@@ -16,13 +17,14 @@ FONT_PATH = "Roboto-Bold.ttf"
 def load_vietnamese_font():
     if not os.path.exists(FONT_PATH):
         try:
-            urllib.request.urlretrieve(FONT_URL, FONT_PATH)
+            # Thiết lập timeout để nếu mạng lỗi không bị treo web
+            urllib.request.urlretrieve(FONT_URL, FONT_PATH, timeout=10)
         except:
             pass
 load_vietnamese_font()
 
 # ==========================================
-# CẤU HÌNH GIAO DIỆN WEB (CHIA 2 CỘT NGANG NHAU)
+# GIAO DIỆN WEB (CHIA 2 CỘT NGANG NHAU)
 # ==========================================
 st.set_page_config(page_title="Tool KOC LazyChef", layout="wide")
 st.title("🎬 AI Video KOC Editor")
@@ -68,12 +70,11 @@ for i, col in enumerate([t_col1, t_col2, t_col3]):
                 })
 
 # ==========================================
-# HÀM XỬ LÝ VẼ CHỮ BẰNG PILLOW (HÀM THAY THẾ IMAGEMAGICK)
+# HÀM XỬ LÝ VẼ CHỮ AN TOÀN (KHÔNG LO CRASH)
 # ==========================================
 def make_text_frame(gf, t, text_list, video_w, video_h):
-    frame = gf(t) # Lấy khung hình gốc tại giây t
+    frame = gf(t)
     
-    # Tìm xem tại giây t này có đoạn text nào cần hiển thị không
     active_text = None
     for txt in text_list:
         if txt["start"] <= t <= txt["end"]:
@@ -81,38 +82,50 @@ def make_text_frame(gf, t, text_list, video_w, video_h):
             break
             
     if not active_text:
-        return frame # Nếu không có text thì trả về khung hình gốc luôn
+        return frame
         
-    # Chuyển đổi khung hình sang dạng ảnh Pillow để vẽ chữ
     img = Image.fromarray(frame)
     draw = ImageDraw.Draw(img)
     
-    # Thiết lập Font chữ
-    font_size = int(video_w * 0.05) # Tự động co giãn cỡ chữ theo độ phân giải video
-    font = ImageFont.truetype(FONT_PATH, font_size) if os.path.exists(FONT_PATH) else ImageFont.load_default()
+    font_size = max(20, int(video_w * 0.045)) # Tính toán kích thước chữ theo khung hình
     
-    # Tính toán kích thước khối chữ để vẽ nền
+    # SỬA LỖI CHÍ MẠNG TẠI ĐÂY: Kiểm tra font sinh ra an toàn
+    font = None
+    if os.path.exists(FONT_PATH) and os.path.getsize(FONT_PATH) > 0:
+        try:
+            font = ImageFont.truetype(FONT_PATH, font_size)
+        except:
+            font = ImageFont.load_default()
+    else:
+        font = ImageFont.load_default()
+        
     text = active_text["content"]
-    text_w, text_h = draw.textsize(text, font=font) if hasattr(draw, 'textsize') else draw.textlength(text, font=font), font_size
     
-    # Vị trí đặt chữ (Chính giữa màn hình, lệch xuống dưới 1 chút)
-    x = (video_w - text_w) // 2
-    y = int(video_h * 0.75)
+    # Đo kích thước chữ để tạo khung nền đổ bóng ôm sát chữ
+    if hasattr(draw, 'textbbox'):
+        bbox = draw.textbbox((0, 0), text, font=font)
+        text_w = bbox[2] - bbox[0]
+        text_h = bbox[3] - bbox[1]
+    else:
+        text_w = draw.textlength(text, font=font)
+        text_h = font_size
+
+    # Vị trí đặt chữ (Chính giữa bên dưới màn hình KOC)
+    x = int((video_w - text_w) // 2)
+    y = int(video_h * 0.8)
     
-    # Vẽ nền chữ nhật đổ bóng ôm sát chữ
-    pad = 15
+    # Vẽ hộp nền màu
+    pad = 12
     draw.rectangle([x - pad, y - pad, x + text_w + pad, y + text_h + pad], fill=active_text["style"]["bg_color"])
     
-    # Viết chữ lên trên nền
-    draw.text((x, y), text, fill=active_text["style"]["text_color"], font=font)
+    # Đè chữ lên nền
+    draw.text((x, y - 2), text, fill=active_text["style"]["text_color"], font=font)
     
     return np.array(img)
 
 # ==========================================
 # 3. LUỒNG XỬ LÝ AI & LOADING TIẾN TRÌNH
 # ==========================================
-import numpy as np # Import thêm thư viện bổ trợ mảng hình ảnh
-
 def save_temp(file):
     with tempfile.NamedTemporaryFile(delete=False, suffix='.mp4') as tmp:
         tmp.write(file.getvalue())
@@ -157,7 +170,6 @@ if st.button("🚀 BẮT ĐẦU TẠO VIDEO", use_container_width=True):
             progress_bar.progress(60)
 
             status_text.text("✍️ Bước 4: Đang đồng bộ hóa chèn Text Tiếng Việt...")
-            # Sử dụng fl_image để tự vẽ text lướt qua từng khung hình (Không cần ImageMagick)
             if texts_config:
                 final_video = final_video.fl_image(
                     lambda gf, t: make_text_frame(gf, t, texts_config, final_video.w, final_video.h), 
